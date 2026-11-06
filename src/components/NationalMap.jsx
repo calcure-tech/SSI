@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
+import { MapContainer, GeoJSON } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import rawGeo from '../data/sigungu_geo.json'
+// 63차 — 주변국 땅(북한·중국·일본·러시아 일부). Natural Earth 10m 경계를 한반도 주변으로
+// 자르고 단순화해 파일 안에 넣었다. 외부 배경지도 없이도 한반도가 섬처럼 떠 보이지 않게.
+import neighborGeo from '../data/neighbors_geo.json'
+
+const NB_STYLE = { fillColor: '#EEEBE4', fillOpacity: 1, color: '#BCC3CC', weight: 0.7, opacity: 1 }
+// 그려 둔 범위(주변국 해안선을 자른 사각형). 이 밖은 비어 있으므로 화면이 넘어가지 않게 막는다.
+const DRAWN = L.latLngBounds([31.3, 119.5], [41.2, 135.5])
+const NB_LABELS = [['북한', 38.6, 126.45], ['중국', 37.0, 121.2], ['일본', 33.75, 131.1]]
 import { ROWS, rowKey, keyOf, rowIndex, valuesOf, shortSido, SECTORS, HEAT, BLUE, GREEN, DIV, PURPLE, methodOf, indsOf } from '../lib/ssi.js'
 import { HueDots } from './ResultChrome.jsx'
 import { Plus, Minus, Reset, Expand, Download } from './Glyph.jsx'
@@ -113,7 +121,6 @@ export default function NationalMap({
   const geoRef = useRef(null)
   const wrapRef = useRef(null)
   const [map, setMap] = useState(null)
-  const [tilesReady, setTilesReady] = useState(false)
   const [labelsOn, setLabelsOn] = useState(true)
   const [dlOpen, setDlOpen] = useState(false)
   const [dlMsg, setDlMsg] = useState('')
@@ -260,6 +267,16 @@ export default function NationalMap({
     map.flyTo(map.unproject(c, z), z, { duration })
   }
 
+  // 주변국 이름표 — 회색 작은 글씨로 고정. 시군구 이름표 켜고 끄기와 무관하다.
+  useEffect(() => {
+    if (!map) return
+    const lay = L.layerGroup(NB_LABELS.map(([t, lat, lng]) => L.marker([lat, lng], {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: 'nb-lab', html: `<span>${t}</span>`, iconSize: [0, 0] }),
+    }))).addTo(map)
+    return () => { lay.remove() }
+  }, [map])
+
   // 전국 보기 — 도서까지 담느라 지도가 눈에 띄게 작아지면(9% 이상) 본토 기준으로 맞춘다.
   // 백령도·독도 때문에 경도 폭이 본토의 두 배가 되어, 좁은 화면에서 국토가 손톱만 해지기 때문이다.
   const fitAll = (duration = 0.6) => {
@@ -378,8 +395,19 @@ export default function NationalMap({
     let raf = 0
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => { try { map.invalidateSize({ animate: false }) } catch (e) { /* noop */ } })
+      raf = requestAnimationFrame(() => { try { map.invalidateSize({ animate: false }); clampZoom() } catch (e) { /* noop */ } })
     })
+    // 64차 — 지도를 그려 둔 범위까지만 축소·이동된다. 최소 배율은 그 범위가 화면을
+    // 꽉 채우는 배율이라, 아무리 줄여도 바깥 빈 공간(잘린 해안선)이 보이지 않는다.
+    // 지도 칸 크기가 바뀔 때마다 다시 잰다.
+    const clampZoom = () => {
+      const z = map.getBoundsZoom(DRAWN, true)
+      map.setMinZoom(z)
+      if (map.getZoom() < z) map.setZoom(z, { animate: false })
+      map.panInsideBounds(DRAWN, { animate: false })
+    }
+    map.setMaxBounds(DRAWN)
+    clampZoom()
     ro.observe(wrapRef.current)
     return () => { cancelAnimationFrame(raf); ro.disconnect() }
   }, [map])
@@ -474,12 +502,16 @@ export default function NationalMap({
       {title && <div className="map-cap"><b>{title}</b>{subtitle && <em>{subtitle}</em>}</div>}
       {/* zoomSnap=0 — 확대 단계를 정수로 끊지 않는다.
           정수로 끊으면 화면이 남아도 한 단계 낮은 배율로 내려가 지도가 작아 보인다. */}
+      {/* 62차 — 외부 배경지도(CARTO 타일)를 쓰지 않는다. html 파일을 더블클릭해 열면
+          (file://) 요청에 출처 정보가 붙지 않아 타일 서버가 막고 'API 키 필요' 그림을
+          돌려보냈고, 기관 내부망에서는 서버 자체가 막히기도 했다. 시군구 경계는 파일
+          안에 들어 있으므로 바다는 바탕색, 땅은 시군구 폴리곤만으로 그린다 —
+          인터넷이 없어도, 어디서 열어도 같은 지도가 나온다. */}
       <MapContainer ref={setMap} center={[36.4, 127.8]} zoom={compact ? 6 : 7} zoomControl={false}
-        zoomSnap={0} zoomDelta={0.5} wheelPxPerZoomLevel={90}
+        zoomSnap={0} zoomDelta={0.5} wheelPxPerZoomLevel={90} attributionControl={false}
+        maxBounds={[[31.3, 119.5], [41.2, 135.5]]} maxBoundsViscosity={1}
         preferCanvas={true} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; OpenStreetMap &copy; CARTO' subdomains="abcd" maxZoom={19}
-          eventHandlers={{ load: () => setTilesReady(true) }} />
+        <GeoJSON data={neighborGeo} style={() => NB_STYLE} interactive={false} />
         <GeoJSON ref={geoRef} data={geo} style={styleFor} onEachFeature={onEach} />
       </MapContainer>
 
@@ -568,7 +600,6 @@ export default function NationalMap({
         </div>
       )}
 
-      {!tilesReady && <div className="map-loading"><span className="spin" />지도 불러오는 중…</div>}
 
       {blank ? (
         <div className={`maplegend mapblank${compact ? ' lg-mini' : ''}`}>

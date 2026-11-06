@@ -966,3 +966,24 @@
 .ip-peryr u { text-decoration: none; flex: none; font-size: var(--fs-1); font-weight: 750;
   color: var(--ink3); background: var(--muted); border-radius: 4px; padding: 1px 6px; }
 .ip-peryr span { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 62차 — 외부 배경지도 제거: 바다는 바탕색, 땅은 시군구 폴리곤 ── */
+.map-canvas .leaflet-container { background: #D6E2EE; }
+
+/* ── 63차 — 주변국 땅 · 이름표 ── */
+.nb-lab span { position: absolute; transform: translate(-50%, -50%); white-space: nowrap;
+  font-size: var(--fs-3); font-weight: 700; letter-spacing: .3em; color: #A3AAB4; pointer-events: none; }
+
+/* ── 63차 — 좁은 화면 상단 정리 ──
+   (1) 머리줄이 58px로 높이가 고정돼 있어, 1240px 아래에서 단계 바가 둘째 줄로
+       내려가면 그 줄이 머리줄 밖으로 삐져나와 명령바와 겹쳤다 → 높이를 내용만큼.
+   (2) 명령바는 980px 아래에서만 줄바꿈해서 그 사이 폭에서는 양 끝이 잘렸다
+       (왼쪽 '지도 값', 오른쪽 '보고서 저장') → 폭이 모자라면 언제든 다음 줄로. */
+@media (max-width: 1240px) {
+  .header { height: auto; min-height: 58px; padding-top: 6px; padding-bottom: 6px; }
+  .hd-center { padding-bottom: 1px; }
+}
+.cmdbar { flex-wrap: wrap; row-gap: 8px; }
+@media (max-width: 1460px) { .cb-hint { display: none; } }
+@media (max-width: 1340px) { .cb-grp > label { display: none; } .cb-sep { display: none; } .cmdbar .cb-tag { display: none; } }
+@media (max-width: 1240px) { .cmdbar { gap: 10px; padding: 7px 14px; } .cb-seg button { padding: 6px 10px; } }
